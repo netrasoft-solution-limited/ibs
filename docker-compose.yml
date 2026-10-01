@@ -1,0 +1,18 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: igr-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: igr
+      POSTGRES_PASSWORD: igr_local_dev
+      POSTGRES_DB: igr_platform
+    ports: ["5433:5432"]
+    volumes: ["igr_pgdata:/var/lib/postgresql/data"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U igr -d igr_platform"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+volumes:
+  igr_pgdata:

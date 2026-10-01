@@ -1,0 +1,431 @@
+// Integrated revenue platform — multi-tenant schema.
+//
+// Every state revenue authority is a Tenant. All operational data carries a
+// tenantId and is scoped by it, so one deployment serves many states. The
+// legacy platform forked the entire codebase per state; nothing here is
+// per-state except rows.
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "../generated/client"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ---------------------------------------------------------------- tenancy
+
+model Tenant {
+  id        String  @id @default(cuid())
+  /// URL-safe identifier, e.g. "nasarawa"
+  slug      String  @unique
+  /// "Nasarawa State Internal Revenue Service"
+  name      String
+  shortName String
+  stateName String
+  isActive  Boolean @default(true)
+
+  /// Branding, resolved by the web app at request time. Replaces the legacy
+  /// approach of hard-coding one state's identity across 233 source files.
+  theme Json @default("{}")
+
+  /// Per-tenant operational settings: gateway keys, sender identity, timezone.
+  settings Json @default("{}")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  lgas                 Lga[]
+  users                User[]
+  taxpayers            Taxpayer[]
+  mdas                 Mda[]
+  revenueHeads         RevenueHead[]
+  invoices             Invoice[]
+  payments             Payment[]
+  auditLogs            AuditLog[]
+  presumptiveSchedules PresumptiveSchedule[]
+
+  @@map("tenants")
+}
+
+/// Local government areas are tenant data, never a hard-coded table.
+/// The two-digit code forms part of every taxpayer identifier.
+model Lga {
+  id       String @id @default(cuid())
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  name String
+  /// Two-digit code embedded in the TIN
+  code String
+
+  taxpayers Taxpayer[]
+
+  @@unique([tenantId, code])
+  @@unique([tenantId, name])
+  @@index([tenantId])
+  @@map("lgas")
+}
+
+// ------------------------------------------------------------------ access
+
+enum UserType {
+  ADMIN
+  TAX_OFFICER
+  MDA_USER
+  ENUMERATOR
+  TAXPAYER
+}
+
+/// One user table with a type discriminator, replacing the legacy platform's
+/// five separate user tables and five parallel login paths.
+model User {
+  id       String @id @default(cuid())
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  email        String
+  phone        String?
+  fullName     String
+  passwordHash String
+  type         UserType
+  isActive     Boolean  @default(true)
+
+  emailVerifiedAt DateTime?
+  lastLoginAt     DateTime?
+
+  /// Set for MDA_USER and TAX_OFFICER; scopes what the user may see.
+  mdaId String?
+  mda   Mda?    @relation(fields: [mdaId], references: [id])
+
+  /// Set for TAXPAYER; links the login to the taxpayer record.
+  taxpayerId String?   @unique
+  taxpayer   Taxpayer? @relation(fields: [taxpayerId], references: [id])
+
+  permissions UserPermission[]
+  auditLogs   AuditLog[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([tenantId, email])
+  @@index([tenantId, type])
+  @@map("users")
+}
+
+/// The permission catalogue is reference data, identical across tenants.
+model Permission {
+  id          String  @id @default(cuid())
+  /// Stable machine key, e.g. "invoice.create"
+  key         String  @unique
+  label       String
+  category    String
+  description String?
+
+  users UserPermission[]
+
+  @@index([category])
+  @@map("permissions")
+}
+
+model UserPermission {
+  userId       String
+  permissionId String
+  grantedAt    DateTime @default(now())
+  grantedBy    String?
+
+  user       User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  permission Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@id([userId, permissionId])
+  @@index([userId])
+  @@map("user_permissions")
+}
+
+// --------------------------------------------------------------- taxpayers
+
+enum TaxpayerCategory {
+  INDIVIDUAL
+  CORPORATE
+  STATE_AGENCY
+  FEDERAL_AGENCY
+}
+
+enum TinStatus {
+  PENDING
+  SUBMITTED
+  UNDER_REVIEW
+  APPROVED
+  DECLINED
+}
+
+model Taxpayer {
+  id       String @id @default(cuid())
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  /// Year + LGA code + serial. Unique within a tenant, not globally.
+  tin       String
+  category  TaxpayerCategory
+  tinStatus TinStatus        @default(PENDING)
+
+  firstName    String?
+  surname      String?
+  businessName String?
+  email        String
+  phone        String
+
+  lgaId   String?
+  lga     Lga?    @relation(fields: [lgaId], references: [id])
+  address String?
+
+  /// Enumeration agent who captured this taxpayer in the field, if any.
+  registeredById String?
+
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  login    User?
+  invoices Invoice[]
+
+  @@unique([tenantId, tin])
+  @@unique([tenantId, email])
+  @@index([tenantId, category])
+  @@index([tenantId, tinStatus])
+  @@map("taxpayers")
+}
+
+// ------------------------------------------------------- revenue structure
+
+model Mda {
+  id       String @id @default(cuid())
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  name         String
+  code         String
+  email        String?
+  phone        String?
+  allowPayment Boolean @default(true)
+  isActive     Boolean @default(true)
+
+  revenueHeads RevenueHead[]
+  users        User[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([tenantId, code])
+  @@index([tenantId])
+  @@map("mdas")
+}
+
+enum BillingFrequency {
+  WEEKLY
+  MONTHLY
+  QUARTERLY
+  YEARLY
+  ONE_OFF
+}
+
+enum RevenueHeadCategory {
+  INDIVIDUAL
+  CORPORATE
+  STATE
+  FEDERAL
+}
+
+model RevenueHead {
+  id       String @id @default(cuid())
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  mdaId String
+  mda   Mda    @relation(fields: [mdaId], references: [id])
+
+  itemCode  String
+  itemName  String
+  category  RevenueHeadCategory
+  amount    Decimal             @db.Decimal(14, 2)
+  frequency BillingFrequency
+
+  /// A revenue head is not billable until approved.
+  isApproved Boolean   @default(false)
+  approvedAt DateTime?
+  approvedBy String?
+  isActive   Boolean   @default(true)
+
+  lines InvoiceLine[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([tenantId, itemCode])
+  @@index([tenantId, mdaId])
+  @@map("revenue_heads")
+}
+
+/// Presumptive amounts are configured per tenant and business type.
+/// The bands themselves are policy and live in @igr/tax-rules.
+model PresumptiveSchedule {
+  id       String @id @default(cuid())
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  businessType String
+  micro        Decimal          @db.Decimal(14, 2)
+  small        Decimal          @db.Decimal(14, 2)
+  medium       Decimal          @db.Decimal(14, 2)
+  frequency    BillingFrequency @default(YEARLY)
+
+  @@unique([tenantId, businessType])
+  @@map("presumptive_schedules")
+}
+
+// --------------------------------------------------------- billing/payment
+
+enum InvoiceType {
+  DIRECT
+  DIRECT_ASSESSMENT
+  DEMAND_NOTICE
+  PRESUMPTIVE
+  TCC
+  PAYE
+  APPLICABLE
+}
+
+enum InvoiceStatus {
+  UNPAID
+  PART_PAID
+  PAID
+  CANCELLED
+  EXPIRED
+}
+
+model Invoice {
+  id       String @id @default(cuid())
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  invoiceNumber String
+  type          InvoiceType
+  status        InvoiceStatus @default(UNPAID)
+
+  taxpayerId String
+  taxpayer   Taxpayer @relation(fields: [taxpayerId], references: [id])
+
+  totalAmount Decimal  @db.Decimal(14, 2)
+  amountPaid  Decimal  @default(0) @db.Decimal(14, 2)
+  /// Earliest due date across all lines.
+  dueDate     DateTime
+  description String?
+
+  raisedById String?
+
+  lines    InvoiceLine[]
+  payments Payment[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([tenantId, invoiceNumber])
+  @@index([tenantId, status])
+  @@index([tenantId, taxpayerId])
+  @@index([tenantId, dueDate])
+  @@map("invoices")
+}
+
+model InvoiceLine {
+  id        String  @id @default(cuid())
+  invoiceId String
+  invoice   Invoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+
+  revenueHeadId String
+  revenueHead   RevenueHead @relation(fields: [revenueHeadId], references: [id])
+
+  description String
+  quantity    Int      @default(1)
+  unitAmount  Decimal  @db.Decimal(14, 2)
+  lineTotal   Decimal  @db.Decimal(14, 2)
+  dueDate     DateTime
+
+  @@index([invoiceId])
+  @@map("invoice_lines")
+}
+
+enum PaymentChannel {
+  PAYSTACK
+  REMITA
+  PAYDIRECT
+  CREDO
+  BANK_BRANCH
+}
+
+enum PaymentStatus {
+  PENDING
+  SUCCESSFUL
+  FAILED
+  REVERSED
+}
+
+model Payment {
+  id       String @id @default(cuid())
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  invoiceId String
+  invoice   Invoice @relation(fields: [invoiceId], references: [id])
+
+  /// Gateway's own reference. Unique per tenant — this is what makes a
+  /// duplicate posting impossible rather than merely unlikely.
+  reference     String
+  receiptNumber String?
+
+  channel PaymentChannel
+  status  PaymentStatus  @default(PENDING)
+  amount  Decimal        @db.Decimal(14, 2)
+  paidAt  DateTime?
+
+  /// Raw gateway message, retained for reconciliation and dispute.
+  gatewayPayload Json?
+
+  createdAt DateTime @default(now())
+
+  @@unique([tenantId, reference])
+  @@index([tenantId, invoiceId])
+  @@index([tenantId, status])
+  @@map("payments")
+}
+
+// ------------------------------------------------------------------ audit
+
+model AuditLog {
+  id       String @id @default(cuid())
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  userId String?
+  user   User?   @relation(fields: [userId], references: [id])
+
+  userType   UserType?
+  method     String
+  path       String
+  statusCode Int
+  durationMs Int?
+
+  requestBody  Json?
+  responseBody Json?
+
+  ipAddress String?
+  userAgent String?
+
+  createdAt DateTime @default(now())
+
+  @@index([tenantId, createdAt])
+  @@index([tenantId, userId])
+  @@index([tenantId, path])
+  @@map("audit_logs")
+}

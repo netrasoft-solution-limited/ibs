@@ -1,0 +1,14 @@
+{
+  "name": "igr-platform",
+  "version": "0.1.0",
+  "private": true,
+  "workspaces": ["apps/*", "packages/*"],
+  "scripts": {
+    "test": "npm run test --workspaces --if-present",
+    "dev:api": "npm run start:dev --workspace @igr/api",
+    "dev:web": "npm run dev --workspace @igr/web",
+    "db:migrate": "npm run migrate --workspace @igr/database",
+    "db:seed": "npm run seed --workspace @igr/database"
+  },
+  "engines": { "node": ">=20" }
+}

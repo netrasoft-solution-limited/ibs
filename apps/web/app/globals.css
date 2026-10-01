@@ -1,0 +1,169 @@
+@import 'tailwindcss';
+
+/*
+ * Design tokens.
+ *
+ * Warm neutral ground, white cards, one crimson accent and one near-black for
+ * emphasis. Nothing is squared off: cards are 20px, controls are pills. Accent
+ * colours stay CSS variables because a tenant overrides them at runtime from
+ * `Tenant.theme` — no state's identity is compiled into the bundle.
+ */
+@theme {
+  /* Ground */
+  --color-page: #dedad9;
+  --color-paper: #f1eeee;
+  --color-raised: #ffffff;
+  --color-sunk: #f5f3f3;
+  --color-deep: #121212;
+
+  /* Type */
+  --color-ink: #17181a;
+  --color-ink-2: #6b6b70;
+  --color-ink-3: #9a9a9f;
+
+  /* Lines */
+  --color-rule: #f0eded;
+  --color-rule-2: #e4e0e0;
+
+  /* Accent */
+  --color-accent: #e51a4c;
+  --color-accent-2: #f04a72;
+  --color-accent-soft: #fde9ef;
+  --color-brass: #9a9a9f;
+
+  /* Status */
+  --color-danger: #d81f45;
+  --color-danger-bg: #fdeaee;
+  --color-warn: #9a6a12;
+  --color-warn-bg: #fbf1dd;
+  --color-ok: #15734d;
+  --color-ok-bg: #e6f4ed;
+  --color-info: #45566b;
+  --color-info-bg: #eaeef3;
+
+  --font-sans:
+    Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
+  --font-serif: Inter, -apple-system, Helvetica, Arial, sans-serif;
+  --font-mono: 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  /* Radii — the single most defining property of this system */
+  --radius-shell: 30px;
+  --radius-card: 20px;
+  --radius-inner: 14px;
+  --radius-control: 12px;
+
+  --shadow-soft: 0 1px 2px rgba(23, 24, 26, 0.04), 0 10px 30px -18px rgba(23, 24, 26, 0.22);
+  --shadow-lift: 0 1px 2px rgba(23, 24, 26, 0.05), 0 18px 44px -24px rgba(23, 24, 26, 0.34);
+}
+
+html {
+  color-scheme: light;
+}
+
+body {
+  background: var(--color-page);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  font-size: 14px;
+  -webkit-font-smoothing: antialiased;
+  letter-spacing: -0.006em;
+}
+
+h1,
+h2,
+h3,
+h4 {
+  font-family: var(--font-sans);
+  font-weight: 600;
+  letter-spacing: -0.022em;
+  text-wrap: balance;
+}
+
+/* Figures align in columns and never jitter between renders. */
+.tabular {
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
+}
+
+/* Small grey label. Sentence case — this system does not shout. */
+.eyebrow {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--color-ink-3);
+  letter-spacing: -0.004em;
+}
+
+/* The decimal tail of a headline figure sits back from the whole number. */
+.decimals {
+  color: var(--color-ink-3);
+}
+
+:focus-visible {
+  outline: 2px solid var(--tenant-accent, var(--color-accent));
+  outline-offset: 2px;
+  border-radius: 8px;
+}
+
+.scroll-x {
+  overflow-x: auto;
+}
+
+/* Diagonal hatch used behind secondary bars in the reference charts. */
+.hatch {
+  background-image: repeating-linear-gradient(
+    -45deg,
+    var(--color-rule-2) 0 1px,
+    transparent 1px 7px
+  );
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--color-rule-2);
+  border: 3px solid transparent;
+  background-clip: content-box;
+  border-radius: 999px;
+}
+
+/* ---------------------------------------------------------------- print
+ * Documents the Service issues on paper: an invoice a citizen carries to a
+ * bank counter, a receipt they keep, a notice served on a taxpayer. These
+ * have to survive a monochrome office laser printer, so backgrounds are
+ * forced to print and every tint has a border carrying the same information.
+ */
+@page {
+  size: A4;
+  margin: 14mm 14mm 16mm;
+}
+
+@media print {
+  html,
+  body {
+    background: #fff;
+  }
+
+  .no-print {
+    display: none !important;
+  }
+
+  .sheet {
+    margin: 0;
+    box-shadow: none;
+    border-radius: 0;
+    padding: 0;
+    max-width: none;
+  }
+
+  .print-exact {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  tr,
+  .avoid-break {
+    break-inside: avoid;
+  }
+}

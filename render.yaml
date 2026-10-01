@@ -1,0 +1,42 @@
+# Render blueprint — https://render.com/docs/blueprint-spec
+#
+# One web service: the Next.js front end. There is deliberately no database
+# and no API service here, because neither exists yet — `apps/api` is empty and
+# the app serves the in-memory dataset in `apps/web/lib/mock/data.ts`. This
+# blueprint deploys a demonstration, not a working revenue platform.
+#
+# When `apps/api` lands, add a second service and a `databases:` block, and
+# point the web service's NEXT_PUBLIC_API_URL at it.
+
+services:
+  - type: web
+    name: nsirs-web
+    runtime: node
+    plan: free
+    region: frankfurt # closest Render region to Nigeria; oregon/virginia are further
+
+    # Build from the monorepo ROOT, not apps/web: the web app depends on the
+    # workspace package @igr/tax-rules, which only resolves when npm installs
+    # from the root where the workspaces are declared.
+    rootDir: .
+    buildCommand: npm ci && npm run build --workspace @igr/web
+    startCommand: npm run start --workspace @igr/web
+
+    healthCheckPath: /login
+
+    envVars:
+      # engines says >=20; pin it so Render does not pick an older default.
+      - key: NODE_VERSION
+        value: '22'
+
+      - key: NODE_ENV
+        value: production
+
+      # Next reads PORT itself. Render injects it; `next start` picks it up
+      # because the start script no longer hardcodes --port.
+
+      # The sign-in page lists demo accounts whose password is "demo".
+      # On a public URL that lets ANYONE sign in and read every screen.
+      # Leave "true" for a client demo; set "false" to lock the deployment.
+      - key: NEXT_PUBLIC_SHOW_DEMO_LOGINS
+        value: 'true'
