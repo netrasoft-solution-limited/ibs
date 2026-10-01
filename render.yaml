@@ -19,7 +19,11 @@ services:
     # workspace package @igr/tax-rules, which only resolves when npm installs
     # from the root where the workspaces are declared.
     rootDir: .
-    buildCommand: npm ci && npm run build --workspace @igr/web
+    # --include=dev is load-bearing. Render sets NODE_ENV=production, and npm
+    # then OMITS devDependencies — but tailwindcss and @tailwindcss/postcss are
+    # build-time requirements that live there, so postcss.config.mjs fails to
+    # resolve them and `next build` dies on app/globals.css.
+    buildCommand: npm ci --include=dev && npm run build --workspace @igr/web
     startCommand: npm run start --workspace @igr/web
 
     healthCheckPath: /login
@@ -29,8 +33,9 @@ services:
       - key: NODE_VERSION
         value: '22'
 
-      - key: NODE_ENV
-        value: production
+      # NODE_ENV is deliberately NOT set here: Render already sets it to
+      # production for the running service, and setting it as a build env var
+      # is what stripped the devDependencies the build needs.
 
       # Next reads PORT itself. Render injects it; `next start` picks it up
       # because the start script no longer hardcodes --port.
